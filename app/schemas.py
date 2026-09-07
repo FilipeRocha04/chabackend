@@ -110,6 +110,13 @@ class AdminUserRoleUpdate(BaseModel):
     is_admin: bool
 
 
+class AdminUserCreate(BaseModel):
+    email: EmailStr
+    username: Optional[str] = Field(default=None, min_length=3, max_length=40)
+    password: str = Field(min_length=6, max_length=72)
+    is_admin: bool = False
+
+
 class PersonGiftOut(BaseModel):
     guest_name: str
     item_name: str

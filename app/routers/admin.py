@@ -9,6 +9,7 @@ from ..schemas import (
     AdminLogin,
     AdminMe,
     AdminRegister,
+    AdminUserCreate,
     AdminUserOut,
     AdminUserRoleUpdate,
     TokenResponse,
@@ -17,26 +18,31 @@ from ..schemas import (
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: AdminRegister, db: Session = Depends(get_db)) -> TokenResponse:
-    email = payload.email.strip().lower()
+def _new_user(db: Session, email: str, username: str | None, password: str, is_admin: bool) -> AdminUser:
+    email = email.strip().lower()
     if db.query(AdminUser).filter(AdminUser.email == email).first():
         raise HTTPException(status_code=400, detail="Este e-mail já tem uma conta.")
 
-    username = payload.username.strip().lower() if payload.username else None
+    username = username.strip().lower() if username else None
     if username and db.query(AdminUser).filter(AdminUser.username == username).first():
         raise HTTPException(status_code=400, detail="Este nome de usuário já está em uso.")
 
-    is_first_admin = db.query(AdminUser).count() == 0
     user = AdminUser(
         email=email,
         username=username,
-        password_hash=hash_password(payload.password),
-        is_admin=is_first_admin,
+        password_hash=hash_password(password),
+        is_admin=is_admin,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    return user
+
+
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+def register(payload: AdminRegister, db: Session = Depends(get_db)) -> TokenResponse:
+    is_first_admin = db.query(AdminUser).count() == 0
+    user = _new_user(db, payload.email, payload.username, payload.password, is_first_admin)
 
     return TokenResponse(
         access_token=create_access_token(user),
@@ -75,6 +81,15 @@ def list_users(
     db: Session = Depends(get_db), _: AdminUser = Depends(require_admin)
 ) -> list[AdminUser]:
     return db.query(AdminUser).order_by(AdminUser.created_at.asc()).all()
+
+
+@router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: AdminUserCreate,
+    db: Session = Depends(get_db),
+    _: AdminUser = Depends(require_admin),
+) -> AdminUser:
+    return _new_user(db, payload.email, payload.username, payload.password, payload.is_admin)
 
 
 @router.patch("/users/{user_id}/role", response_model=AdminUserOut)
