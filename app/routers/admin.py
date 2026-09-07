@@ -2,10 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..auth import create_access_token, get_current_user, hash_password, verify_password
+from ..auth import create_access_token, get_current_user, hash_password, require_admin, verify_password
 from ..database import get_db
 from ..models import AdminUser
-from ..schemas import AdminLogin, AdminMe, AdminRegister, TokenResponse
+from ..schemas import (
+    AdminLogin,
+    AdminMe,
+    AdminRegister,
+    AdminUserOut,
+    AdminUserRoleUpdate,
+    TokenResponse,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -60,4 +67,33 @@ def login(payload: AdminLogin, db: Session = Depends(get_db)) -> TokenResponse:
 
 @router.get("/me", response_model=AdminMe)
 def me(user: AdminUser = Depends(get_current_user)) -> AdminMe:
-    return AdminMe(email=user.email, username=user.username, is_admin=user.is_admin)
+    return AdminMe(id=user.id, email=user.email, username=user.username, is_admin=user.is_admin)
+
+
+@router.get("/users", response_model=list[AdminUserOut])
+def list_users(
+    db: Session = Depends(get_db), _: AdminUser = Depends(require_admin)
+) -> list[AdminUser]:
+    return db.query(AdminUser).order_by(AdminUser.created_at.asc()).all()
+
+
+@router.patch("/users/{user_id}/role", response_model=AdminUserOut)
+def update_user_role(
+    user_id: str,
+    payload: AdminUserRoleUpdate,
+    db: Session = Depends(get_db),
+    current: AdminUser = Depends(require_admin),
+) -> AdminUser:
+    target = db.get(AdminUser, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    if target.id == current.id and not payload.is_admin:
+        raise HTTPException(
+            status_code=400, detail="Você não pode remover sua própria permissão de admin."
+        )
+
+    target.is_admin = payload.is_admin
+    db.commit()
+    db.refresh(target)
+    return target

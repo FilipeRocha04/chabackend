@@ -90,8 +90,23 @@ class TokenResponse(BaseModel):
 
 
 class AdminMe(BaseModel):
+    id: str
     email: str
     username: Optional[str] = None
+    is_admin: bool
+
+
+class AdminUserOut(BaseModel):
+    id: str
+    email: str
+    username: Optional[str] = None
+    is_admin: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminUserRoleUpdate(BaseModel):
     is_admin: bool
 
 
